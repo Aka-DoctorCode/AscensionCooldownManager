@@ -1,0 +1,8 @@
+## Interface: 120000
+## Title: Ascension Cooldown Manager
+## Notes: Manage the in-game cooldown manager appearance and behavior.
+## Author: AkaDoctorCode
+## Version: 2.0.0
+## SavedVariables: AscensionCooldownDB
+
+AscensionCooldownManager.lua
