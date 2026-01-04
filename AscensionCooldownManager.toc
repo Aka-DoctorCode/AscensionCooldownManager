@@ -2,7 +2,7 @@
 ## Title: AscensionCooldownManager
 ## Notes: Manage the in-game cooldown manager appearance and behavior.
 ## Author: AkaDoctorCode
-## Version: 1.0.1
+## Version: 1.0.2
 ## SavedVariables: AscensionCooldownDB
 
 AscensionCooldownManager.lua
