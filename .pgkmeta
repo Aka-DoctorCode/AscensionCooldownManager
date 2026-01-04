@@ -1,0 +1,11 @@
+# .pkgmeta
+package-as: AscensionCooldownManager
+enable-nolib-creation: no
+
+ignore:
+    - .git
+    - .gitignore
+    - .vscode
+    - .pkgmeta
+    - __MACOSX
+    - .DS_Store
