@@ -1,4 +1,15 @@
--- AscensionCooldownManager (AscensionCooldownManager) - Core.lua
+-------------------------------------------------------------------------------
+-- Project: AscensionCooldownManager
+-- Author: Aka-DoctorCode 
+-- File: Core.lua
+-- Version: 12.0.0
+-------------------------------------------------------------------------------
+-- Copyright (c) 2025–2026 Aka-DoctorCode. All Rights Reserved.
+--
+-- This software and its source code are the exclusive property of the author.
+-- No part of this file may be copied, modified, redistributed, or used in 
+-- derivative works without express written permission.
+-------------------------------------------------------------------------------
 local addonName, AscensionCooldownManager = ...
 local AceAddon = LibStub("AceAddon-3.0")
 local Ascension = AceAddon:NewAddon(AscensionCooldownManager, addonName, "AceConsole-3.0", "AceEvent-3.0")
