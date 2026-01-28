@@ -1,5 +1,5 @@
 # .pkgmeta
-package-as: AscensionCooldownManager
+package-as: AscensionQuestTracker
 
 ignore:
     - .git
