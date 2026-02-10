@@ -1,5 +1,6 @@
-# .pkgmeta
 package-as: AscensionQuestTracker
+
+enable-nolib-creation: no
 
 ignore:
     - .git
@@ -8,3 +9,4 @@ ignore:
     - .pkgmeta
     - __MACOSX
     - .DS_Store
+    - .txt

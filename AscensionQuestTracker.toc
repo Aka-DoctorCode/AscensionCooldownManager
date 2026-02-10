@@ -2,8 +2,16 @@
 ## Title: Ascension Quest Tracker
 ## Notes: Minimalistic substitute for the default quest tracker.
 ## Author: AkaDoctorCode
-## Version: 01
+## Version: 02
+## SavedVariables: AscensionQuestTrackerDB
 ## IconTexture: Interface\AddOns\AscensionNotes\Media\AkaDoctorCode.png
 
-AscensionQuestTracker_Config.lua
-AscensionQuestTracker.lua
+Config.lua
+Themes.lua
+Core.lua
+Widgets.lua
+BonusObjectives.lua
+WorldQuests.lua
+Scenarios.lua
+QuestLog.lua
+Achievements.lua
