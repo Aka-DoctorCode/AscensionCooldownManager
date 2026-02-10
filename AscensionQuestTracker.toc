@@ -1,8 +1,8 @@
-## Interface: 120000
+## Interface: 120001
 ## Title: Ascension Quest Tracker
 ## Notes: Minimalistic substitute for the default quest tracker.
 ## Author: AkaDoctorCode
-## Version: 02
+## Version: 03
 ## SavedVariables: AscensionQuestTrackerDB
 ## IconTexture: Interface\AddOns\AscensionNotes\Media\AkaDoctorCode.png
 

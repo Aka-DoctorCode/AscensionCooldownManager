@@ -1,0 +1,13 @@
+ADD: 
+- Menu options (finish implementing)
+- Color pickers
+- Share media
+- Jutify left or right
+- Collapse sections
+- Section order
+
+Fix:
+- Remove elements when not needed
+
+Bug: 
+-
