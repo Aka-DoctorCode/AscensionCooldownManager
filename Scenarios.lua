@@ -2,100 +2,76 @@
 -- Project: AscensionQuestTracker
 -- Author: Aka-DoctorCode 
 -- File: Scenarios.lua
--- Version: 05
--------------------------------------------------------------------------------
--- Copyright (c) 2025–2026 Aka-DoctorCode. All Rights Reserved.
---
--- This software and its source code are the exclusive property of the author.
--- No part of this file may be copied, modified, redistributed, or used in 
--- derivative works without express written permission.
+-- Version: 06
 -------------------------------------------------------------------------------
 local addonName, ns = ...
 local AQT = ns.AQT
 local ASSETS = ns.ASSETS
 
--- Helper seguro para colores
-local function GetColor(group, fallback)
-    if ASSETS.colors and ASSETS.colors[group] then
-        return ASSETS.colors[group]
-    end
-    return fallback or {r=0, g=0.7, b=1, a=1} -- Azul por defecto
-end
-
-function AQT:RenderScenario(startY, lineIdx, barIdx)
-    local yOffset = startY
+function AQT:RenderScenario(startY, lineIdx, barIdx, style)
+    local ASSETS = ns.ASSETS
+    -- 1. Apply Granular Style (or fallback)
+    local s = style or { headerSize = 14, textSize = 12, barHeight = 10, lineSpacing = 6 }
+    local font = ASSETS.font
+    local padding = ASSETS.padding or 10
     
-    -- 1. Verificación básica
-    if not C_Scenario or not C_Scenario.IsInScenario() then 
-        return yOffset, lineIdx, barIdx 
-    end
+    local yOffset = startY
+    local width = self.db.profile.width or 260
+    
+    if not C_Scenario or not C_Scenario.IsInScenario() then return yOffset, lineIdx, barIdx end
 
     ----------------------------------------------------------------------------
-    -- A. TEMPORIZADOR (MÍTICAS+)
+    -- A. CHALLENGE MODE (M+) TIMER
     ----------------------------------------------------------------------------
     local timerID = C_ChallengeMode and C_ChallengeMode.GetActiveChallengeMapID and C_ChallengeMode.GetActiveChallengeMapID()
     if timerID then
-        local level, activeAffixIDs = (C_ChallengeMode.GetActiveKeystoneInfo and C_ChallengeMode.GetActiveKeystoneInfo())
+        local level = (C_ChallengeMode.GetActiveKeystoneInfo and C_ChallengeMode.GetActiveKeystoneInfo())
         local _, _, timeLimit = (C_ChallengeMode.GetMapUIInfo and C_ChallengeMode.GetMapUIInfo(timerID))
         local _, elapsedTime = GetWorldElapsedTime(1)
         local timeRem = (timeLimit or 0) - (elapsedTime or 0)
 
-        -- Header
+        -- Keystone Level Header
         local header = self:GetLine(lineIdx)
-        header.text:SetFont(ASSETS.font, ASSETS.fontHeaderSize + 2, "OUTLINE")
-        header:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+        header:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+        header.text:SetFont(font, s.headerSize + 2, "OUTLINE")
+        local cHead = ASSETS.colors.header or {r=1, g=1, b=1}
+        header.text:SetTextColor(cHead.r, cHead.g, cHead.b)
         
-        local hBg = GetColor("headerBg", {r=0, g=0, b=0, a=0.5})
-        -- header:SetBackdropColor(hBg.r, hBg.g, hBg.b, hBg.a) -- Backdrop removed in Core.lua
-        header:SetSize(260, 24)
-        
-        self.SafelySetText(header.text, string.format("  +%d Keystone  ", level or 0))
+        local levelStr = level or 0
+        self.SafelySetText(header.text, string.format("+%d Keystone", levelStr))
         header:Show()
-        yOffset = yOffset - 26
+        yOffset = yOffset - (s.headerSize + 4)
         lineIdx = lineIdx + 1
 
-        -- Afijos
-        if activeAffixIDs then
-            local affixString = ""
-            for _, affixID in ipairs(activeAffixIDs) do
-                local affixName = C_ChallengeMode.GetAffixInfo(affixID)
-                if affixName then
-                    if affixString == "" then affixString = affixName else affixString = affixString .. ", " .. affixName end
-                end
-            end
-            if affixString ~= "" then
-                local affixLine = self:GetLine(lineIdx)
-                affixLine.text:SetFont(ASSETS.font, 10, "OUTLINE")
-                affixLine:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
-                self.SafelySetText(affixLine.text, affixString)
-                affixLine:Show()
-                yOffset = yOffset - 14
-                lineIdx = lineIdx + 1
-            end
-        end
-
-        -- Timer Texto
+        -- Timer Text
         local timerLine = self:GetLine(lineIdx)
-        timerLine.text:SetFont(ASSETS.font, 18, "OUTLINE")
-        timerLine:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
-        self.SafelySetText(timerLine.text, self.FormatTime(timeRem))
+        timerLine:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+        timerLine.text:SetFont(font, 18, "OUTLINE") 
+        
+        local m = math.floor(timeRem / 60)
+        local sec = math.floor(timeRem % 60)
+        self.SafelySetText(timerLine.text, string.format("%02d:%02d", m, sec))
+        
+        if timeRem < 60 then
+            timerLine.text:SetTextColor(1, 0.2, 0.2) 
+        else
+            timerLine.text:SetTextColor(1, 1, 1)
+        end
         timerLine:Show()
         yOffset = yOffset - 22
         lineIdx = lineIdx + 1
 
-        -- Timer Barra
+        -- Timer Bar
         local timeBar = self:GetBar(barIdx)
-        timeBar:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
-        timeBar:SetStatusBarTexture(ASSETS.barTexture or "Interface\\Buttons\\WHITE8x8") -- Asegurar Textura
-        local width = (self.db and self.db.profile and self.db.profile.width) or 260
+        timeBar:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
         timeBar:SetSize(width - 20, 6)
         timeBar:SetMinMaxValues(0, timeLimit or 1)
         timeBar:SetValue(timeLimit - timeRem)
         
         if timeRem < 60 then
-            timeBar:SetStatusBarColor(1, 0, 0)
+            timeBar:SetStatusBarColor(1, 0.2, 0.2)
         else
-            timeBar:SetStatusBarColor(0, 1, 0)
+            timeBar:SetStatusBarColor(1, 1, 1)
         end
         timeBar:Show()
         yOffset = yOffset - 12
@@ -103,103 +79,168 @@ function AQT:RenderScenario(startY, lineIdx, barIdx)
     end
     
     ----------------------------------------------------------------------------
-    -- B. OBJETIVOS DEL ESCENARIO
+    -- B. SCENARIO OBJECTIVES
     ----------------------------------------------------------------------------
-    local stageName, stageDesc, stepCriteriaCount = C_Scenario.GetStepInfo()
+    if C_Scenario and C_Scenario.GetInfo then
+         local name, currentStage, numStages = C_Scenario.GetInfo()
+         
+         if name then
+             -- Scenario Name Header
+             local header = self:GetLine(lineIdx)
+             header:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+             header.text:SetFont(font, s.headerSize, "OUTLINE")
+             local cHead = ASSETS.colors.header or {r=1, g=1, b=1}
+             header.text:SetTextColor(cHead.r, cHead.g, cHead.b)
+             self.SafelySetText(header.text, name)
+             header:Show()
+             
+             yOffset = yOffset - (s.headerSize + s.lineSpacing)
+             lineIdx = lineIdx + 1
+             
+             -- Stage Info
+             local stageName, stageDesc, numCriteria, _, _, _, _, _, weightedProgress = C_Scenario.GetStepInfo()
+             
+             if stageName and stageName ~= "" and stageName ~= name then
+                 local sLine = self:GetLine(lineIdx)
+                 sLine:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+                 sLine.text:SetFont(font, s.textSize, "OUTLINE")
+                 
+                 local cStage = ASSETS.colors.zone or {r=1, g=0.8, b=0}
+                 sLine.text:SetTextColor(cStage.r, cStage.g, cStage.b)
+                 
+                 self.SafelySetText(sLine.text, stageName)
+                 sLine:Show()
+                 yOffset = yOffset - (s.textSize + s.lineSpacing)
+                 lineIdx = lineIdx + 1
+             end
+             
+             -- 1. Main Bar (Weighted Progress)
+             if weightedProgress and type(weightedProgress) == "number" then
+                 local pLine = self:GetLine(lineIdx)
+                 pLine:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+                 pLine.text:SetFont(font, s.textSize, "OUTLINE")
+                 pLine.text:SetTextColor(1, 1, 1)
+                 
+                 self.SafelySetText(pLine.text, string.format("%s (%d%%)", stageDesc or stageName, weightedProgress))
+                 pLine:Show()
+                 yOffset = yOffset - (s.textSize + 4)
+                 lineIdx = lineIdx + 1
+                 
+                 local bar = self:GetBar(barIdx)
+                 bar:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+                 bar:SetSize(width - 20, s.barHeight)
+                 bar:SetMinMaxValues(0, 100)
+                 bar:SetValue(weightedProgress)
+                 
+                 local cBar = ASSETS.colors.quest or {r=1, g=0.8, b=0}
+                 bar:SetStatusBarColor(cBar.r, cBar.g, cBar.b)
+                 bar:Show()
+                 
+                 yOffset = yOffset - (s.barHeight + s.lineSpacing)
+                 barIdx = barIdx + 1
+             else
+                 -- 2. Individual Criteria (ROBUST API CHECK)
+                 local cnt = numCriteria or 0
+                 for i = 1, cnt do
+                    local criteriaString, criteriaType, completed, quantity, totalQuantity, flags, assetID, quantityString, criteriaID, duration, elapsed, criteriaFailed, isWeightedProgress
+                    
+                    -- Priority 1: C_ScenarioInfo (Modern Retail 11.0+)
+                    if C_ScenarioInfo and C_ScenarioInfo.GetCriteriaInfo then
+                        local info = C_ScenarioInfo.GetCriteriaInfo(i)
+                        if info then
+                            criteriaString = info.description
+                            completed = info.completed
+                            quantity = info.quantity
+                            totalQuantity = info.totalQuantity
+                            isWeightedProgress = info.isWeightedProgress
+                        end
+                    end
+
+                    -- Priority 2: C_Scenario.GetCriteriaInfo (Legacy/Table Support)
+                    if (not criteriaString) and C_Scenario.GetCriteriaInfo then
+                        -- Check if it returns a table or list
+                        local status, res = pcall(C_Scenario.GetCriteriaInfo, i)
+                        if status then
+                            if type(res) == "table" then
+                                criteriaString = res.description
+                                completed = res.completed
+                                quantity = res.quantity
+                                totalQuantity = res.totalQuantity
+                                isWeightedProgress = res.isWeightedProgress
+                            else
+                                -- Fallback for very old API returns
+                                criteriaString, _, completed, quantity, totalQuantity, flags, _, _, _, _, _, _, isWeightedProgress = C_Scenario.GetCriteriaInfo(i)
+                            end
+                        end
+                    end
+
+                    -- Priority 3: C_Scenario.GetStepCriteriaInfo (Ultimate Fallback)
+                    if (not criteriaString) and C_Scenario.GetStepCriteriaInfo then
+                         criteriaString, _, completed, quantity, totalQuantity, flags, _, _, _, _, _, _, isWeightedProgress = C_Scenario.GetStepCriteriaInfo(i)
+                    end
+                    
+                    if criteriaString and criteriaString ~= "" then
+                        local line = self:GetLine(lineIdx)
+                        line:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+                        line.text:SetFont(font, s.textSize, "OUTLINE")
+                        
+                        local text = "- " .. criteriaString
+                        if totalQuantity and totalQuantity > 0 then
+                            text = string.format("- %s: %d/%d", criteriaString, quantity, totalQuantity)
+                        end
+                        if isWeightedProgress then
+                             text = string.format("- %s: %d%%", criteriaString, quantity)
+                        end
+                        
+                        -- Color Logic
+                        if completed then
+                            local cComp = ASSETS.colors.complete or {r=0.2, g=1, b=0.2}
+                            line.text:SetTextColor(cComp.r, cComp.g, cComp.b)
+                        else
+                            line.text:SetTextColor(1, 1, 1)
+                        end
+                        
+                        self.SafelySetText(line.text, text)
+                        line:Show()
+                        
+                        -- Progress Bar check
+                        local showBar = false
+                        local barMax = totalQuantity
+                        local barVal = quantity
+                        
+                        if not completed and (isWeightedProgress or (totalQuantity and totalQuantity > 1)) then
+                            showBar = true
+                            if isWeightedProgress then barMax = 100 end
+                        end
+
+                        if showBar then
+                            yOffset = yOffset - (s.textSize + 2)
+                            
+                            local bar = self:GetBar(barIdx)
+                            bar:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+                            bar:SetSize(width - 20, s.barHeight)
+                            bar:SetMinMaxValues(0, barMax)
+                            bar:SetValue(barVal)
+                            
+                            local cBar = ASSETS.colors.quest or {r=1, g=0.8, b=0}
+                            bar:SetStatusBarColor(cBar.r, cBar.g, cBar.b)
+                            bar:Show()
+                            
+                            yOffset = yOffset - (s.barHeight + s.lineSpacing)
+                            barIdx = barIdx + 1
+                            lineIdx = lineIdx + 1
+                        else
+                            yOffset = yOffset - (s.textSize + s.lineSpacing)
+                            lineIdx = lineIdx + 1
+                        end
+                    end
+                 end
+             end
+         end
+    end
     
-    -- Fallbacks de Nombre
-    if not stageName then stageName = C_Scenario.GetInfo() end
-    if not stageName then
-        local mapID = C_Map.GetBestMapForUnit("player")
-        if mapID then stageName = C_Map.GetMapInfo(mapID) and C_Map.GetMapInfo(mapID).name end
-    end
-    stageName = stageName or "Scenario"
-
-    -- Conteo de Objetivos
-    local numCriteria = stepCriteriaCount or 0
-    if numCriteria == 0 and C_Scenario.GetNumCriteria then
-         numCriteria = C_Scenario.GetNumCriteria() or 0
-    end
-
-    -- 1. Título
-    local stageLine = self:GetLine(lineIdx)
-    stageLine.text:SetFont(ASSETS.font, ASSETS.fontHeaderSize, "OUTLINE")
-    stageLine:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
-    local cHead = GetColor("header", {r=1, g=0.8, b=0})
-    stageLine.text:SetTextColor(cHead.r, cHead.g, cHead.b)
-    self.SafelySetText(stageLine.text, stageName)
-    stageLine:Show()
-    yOffset = yOffset - 16
-    lineIdx = lineIdx + 1
-
-    -- 2. Descripción
-    if stageDesc and stageDesc ~= "" then
-        local descLine = self:GetLine(lineIdx)
-        descLine.text:SetFont(ASSETS.font, ASSETS.fontTextSize - 1)
-        descLine:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
-        descLine.text:SetTextColor(0.8, 0.8, 0.8)
-        self.SafelySetText(descLine.text, stageDesc)
-        descLine:Show()
-        yOffset = yOffset - 14
-        lineIdx = lineIdx + 1
-    end
-
-    -- 3. Bucle de Objetivos
-    if C_Scenario.GetStepCriteriaInfo then
-        for i = 1, numCriteria do
-            local name, _, completed, quantity, totalQuantity, _, _, _, _, _, _, _, isWeighted = C_Scenario.GetStepCriteriaInfo(i)
-            
-            -- Sanitizar valores (Evitar errores de nil)
-            quantity = quantity or 0
-            
-            if name and not completed then
-                
-                -- Lógica para forzar barra en objetivos de porcentaje
-                if isWeighted and (not totalQuantity or totalQuantity == 0) then
-                    totalQuantity = 100
-                end
-
-                -- A. Texto
-                local line = self:GetLine(lineIdx)
-                line.text:SetFont(ASSETS.font, ASSETS.fontTextSize, "OUTLINE")
-                line:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
-                line.text:SetTextColor(1, 1, 1)
-
-                local text = name
-                if isWeighted then 
-                    text = string.format("%s: %d%%", name, quantity)
-                elseif totalQuantity and totalQuantity > 0 then
-                    text = string.format("%s: %d/%d", name, quantity, totalQuantity)
-                end
-                
-                self.SafelySetText(line.text, " - " .. text)
-                line:Show()
-                yOffset = yOffset - 12
-                lineIdx = lineIdx + 1
-
-                -- B. Barra de Progreso
-                if totalQuantity and totalQuantity > 0 then
-                    local bar = self:GetBar(barIdx)
-                    local width = (self.db and self.db.profile and self.db.profile.width) or 260
-                    
-                    bar:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
-                    bar:SetSize(width - 30, 8)
-                    bar:SetStatusBarTexture(ASSETS.barTexture or "Interface\\Buttons\\WHITE8x8")
-                    bar:SetMinMaxValues(0, totalQuantity)
-                    bar:SetValue(quantity)
-                    
-                    -- Color Azul
-                    local cBar = GetColor("scenarioBar", {r=0, g=0.7, b=1})
-                    bar:SetStatusBarColor(cBar.r, cBar.g, cBar.b)
-                    
-                    bar:Show()
-                    
-                    yOffset = yOffset - 10
-                    barIdx = barIdx + 1
-                end
-            end
-        end
-    end
+    -- Add section spacing
+    yOffset = yOffset - (ASSETS.spacing or 15)
     
-    return yOffset - ASSETS.spacing, lineIdx, barIdx
+    return yOffset, lineIdx, barIdx
 end

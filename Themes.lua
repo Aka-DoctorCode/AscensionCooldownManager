@@ -2,7 +2,7 @@
 -- Project: AscensionQuestTracker
 -- Author: Aka-DoctorCode 
 -- File: Themes.lua
--- Version: 05
+-- Version: 06
 -------------------------------------------------------------------------------
 -- Copyright (c) 2025–2026 Aka-DoctorCode. All Rights Reserved.
 --

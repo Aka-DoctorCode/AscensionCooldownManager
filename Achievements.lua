@@ -2,7 +2,7 @@
 -- Project: AscensionQuestTracker
 -- Author: Aka-DoctorCode 
 -- File: Achievements.lua
--- Version: 05
+-- Version: 06
 -------------------------------------------------------------------------------
 -- Copyright (c) 2025–2026 Aka-DoctorCode. All Rights Reserved.
 --
@@ -14,52 +14,76 @@ local addonName, ns = ...
 local AQT = ns.AQT
 local ASSETS = ns.ASSETS
 
-function AQT:RenderAchievements(startY, lineIdx)
+function AQT:RenderAchievements(startY, lineIdx, style)
+    local ASSETS = ns.ASSETS
+    -- 1. Apply Granular Style (or fallback)
+    local s = style or { headerSize = 12, textSize = 10, barHeight = 4, lineSpacing = 6 }
+    local font = ASSETS.font
+    local padding = ASSETS.padding
     local yOffset = startY
-    local tracked = GetTrackedAchievements and { GetTrackedAchievements() } or {}
+    
+    -- 2. Get Tracked Achievements
+    -- Ensure function exists (Classic vs Retail compat)
+    if not GetTrackedAchievements then return yOffset, lineIdx end
+    
+    local tracked = { GetTrackedAchievements() }
     if #tracked == 0 then return yOffset, lineIdx end
 
-    -- Cálculos
-    local hHead = ASSETS.fontHeaderSize + (ASSETS.lineSpacing or 6)
-    local hText = ASSETS.fontTextSize + (ASSETS.lineSpacing or 6)
+    -- 3. Calculate Dimensions
+    local hHead = s.headerSize + (s.lineSpacing or 6)
+    local hText = s.textSize + (s.lineSpacing or 6)
+    local width = self.db.profile.width or 260
 
-    -- Main Header
+    -- 4. Main Section Header
     local header = self:GetLine(lineIdx)
-    header.text:SetFont(ASSETS.font, ASSETS.fontHeaderSize, "OUTLINE")
-    header:SetPoint("TOPRIGHT", self, "TOPRIGHT", -ASSETS.padding, yOffset)
-    header.text:SetTextColor(ASSETS.colors.header.r, ASSETS.colors.header.g, ASSETS.colors.header.b)
+    -- [FIX] Use self.Content as parent anchor, not self
+    header:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
     
-    -- Ancho dinámico
-    local width = AscensionQuestTrackerDB.width or 260
-    header:SetSize(width, hHead)
+    header.text:SetFont(font, s.headerSize, "OUTLINE")
+    local cHead = ASSETS.colors.header or {r=1, g=1, b=1}
+    header.text:SetTextColor(cHead.r, cHead.g, cHead.b)
     
-    self.SafelySetText(header.text, "  Achievements  ")
+    self.SafelySetText(header.text, "ACHIEVEMENTS")
     header:Show()
+    
     yOffset = yOffset - (hHead + 4)
     lineIdx = lineIdx + 1
 
+    -- 5. Render Each Achievement
     for _, achID in ipairs(tracked) do
-        local id, name, _, completed = GetAchievementInfo(achID)
-        if not completed and id then
+        local id, name, points, completed, month, day, year, description, flags, icon, rewardText, isGuild, wasEarnedByMe, earnedBy = GetAchievementInfo(achID)
+        
+        if id and not completed then
+            -- Achievement Title
             local line = self:GetLine(lineIdx)
-            line:SetPoint("TOPRIGHT", self, "TOPRIGHT", -ASSETS.padding, yOffset)
-            line.text:SetFont(ASSETS.font, ASSETS.fontHeaderSize, "OUTLINE") -- Logros como headers pequeños
-            line.text:SetTextColor(ASSETS.colors.achievement.r, ASSETS.colors.achievement.g, ASSETS.colors.achievement.b)
-            self.SafelySetText(line.text, name)
+            line:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
             
-            -- Interaction (Click)
+            line.text:SetFont(font, s.textSize + 1, "OUTLINE") -- Slightly larger than objective text
+            local cAch = ASSETS.colors.zone or {r=1, g=0.8, b=0} -- Gold color for achievement title
+            line.text:SetTextColor(cAch.r, cAch.g, cAch.b)
+            
+            self.SafelySetText(line.text, name)
+            line:Show()
+            
+            -- Interaction (Click Logic)
             line:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             line:SetScript("OnClick", function(self, button)
                 if button == "RightButton" then
-                     if RemoveTrackedAchievement then 
+                    -- Stop Tracking
+                    if RemoveTrackedAchievement then 
                         RemoveTrackedAchievement(achID) 
                         if AQT.FullUpdate then AQT:FullUpdate() end
-                     end
+                    end
                 else
-                     if not AchievementFrame then AchievementFrame_LoadUI() end
-                     AchievementFrame_SelectAchievement(achID)
+                    -- Open Frame
+                    if not AchievementFrame then AchievementFrame_LoadUI() end
+                    if AchievementFrame_SelectAchievement then
+                        AchievementFrame_SelectAchievement(achID)
+                    end
                 end
             end)
+            
+            -- Tooltip
             line:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_LEFT")
                 GameTooltip:SetAchievementByID(achID)
@@ -67,31 +91,44 @@ function AQT:RenderAchievements(startY, lineIdx)
             end)
             line:SetScript("OnLeave", function() GameTooltip:Hide() end)
             
-            line:Show()
-            yOffset = yOffset - hHead 
+            yOffset = yOffset - hText
             lineIdx = lineIdx + 1
             
-            -- Criteria
+            -- Achievement Criteria (Objectives)
             local numCriteria = GetAchievementNumCriteria(achID)
             for i = 1, numCriteria do
-                local cName, _, cComp, cQty, cReq = GetAchievementCriteriaInfo(achID, i)
-                if not cComp and (bit.band(select(7, GetAchievementCriteriaInfo(achID, i)), 1) ~= 1) then
+                local cName, cType, cComp, cQty, cReq = GetAchievementCriteriaInfo(achID, i)
+                
+                -- Only show incomplete criteria
+                if not cComp then 
                     local cLine = self:GetLine(lineIdx)
-                    cLine:SetPoint("TOPRIGHT", self, "TOPRIGHT", -ASSETS.padding, yOffset)
-                    cLine.text:SetFont(ASSETS.font, ASSETS.fontTextSize, "OUTLINE")
+                    cLine:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -padding, yOffset)
+                    
+                    cLine.text:SetFont(font, s.textSize, "OUTLINE")
+                    cLine.text:SetTextColor(0.8, 0.8, 0.8) -- Gray for objectives
                     
                     local cText = cName
-                    if cReq and cReq > 1 then cText = string.format("%s: %d/%d", cName, cQty, cReq) end
+                    -- If it's a counter (e.g. 5/10), format it
+                    if cReq and cReq > 1 then 
+                        cText = string.format("- %s: %d/%d", cName, cQty, cReq) 
+                    else
+                        cText = "- " .. cName
+                    end
                     
                     self.SafelySetText(cLine.text, cText)
-                    cLine.text:SetTextColor(0.8, 0.8, 0.8)
                     cLine:Show()
+                    
                     yOffset = yOffset - hText
                     lineIdx = lineIdx + 1
                 end
             end
-            yOffset = yOffset - 4
+            
+            yOffset = yOffset - 6 -- Gap between achievements
         end
     end
+    
+    -- Section Spacing
+    yOffset = yOffset - (ASSETS.spacing or 10)
+
     return yOffset, lineIdx
 end

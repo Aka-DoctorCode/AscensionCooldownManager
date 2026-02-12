@@ -2,7 +2,7 @@
 -- Project: AscensionQuestTracker
 -- Author: Aka-DoctorCode 
 -- File: Core.lua
--- Version: 05
+-- Version: 06
 -------------------------------------------------------------------------------
 -- Copyright (c) 2025–2026 Aka-DoctorCode. All Rights Reserved.
 --
@@ -17,33 +17,55 @@ ns.AQT = AQT
 
 local defaults = {
     profile = {
+        -- Global / Layout
         position = { point = "RIGHT", relativePoint = "RIGHT", x = -50, y = 0 },
         scale = 1.0,
+        locked = false,
         hideOnBoss = true,
         autoSuperTrack = false,
-        locked = false,
+        testMode = false,
+        hideBlizzardTracker = true,
         maxHeight = 600,
         width = 260,
-        fontHeaderSize = 13,
-        fontTextSize = 10,
-        lineSpacing = 6,
-        sectionSpacing = 15
+        sectionSpacing = 15,
+        
+        -- Granular Styles
+        styles = {
+            scenarios =    { headerSize = 14, textSize = 12, barHeight = 10, lineSpacing = 6 },
+            quests =       { headerSize = 13, textSize = 10, barHeight = 4,  lineSpacing = 6 },
+            worldQuests =  { headerSize = 12, textSize = 10, barHeight = 4,  lineSpacing = 6 },
+            achievements = { headerSize = 12, textSize = 10, barHeight = 4,  lineSpacing = 6 },
+        }
     }
 }
 
 function AQT:OnInitialize()
+    -- Initialize DB with "Default" profile
     self.db = LibStub("AceDB-3.0"):New("AscensionQuestTrackerDB", defaults, true)
     
-    -- Compatibilidad para archivos antiguos que buscan la global
+    -- Register Profile Callbacks
+    self.db.RegisterCallback(self, "OnProfileChanged", "RefreshConfig")
+    self.db.RegisterCallback(self, "OnProfileCopied", "RefreshConfig")
+    self.db.RegisterCallback(self, "OnProfileReset",  "RefreshConfig")
+
+    -- Compatibilidad legacy
     _G.AscensionQuestTrackerDB = self.db.profile 
+end
+
+-- New Function to handle profile switches
+function AQT:RefreshConfig()
+    -- Re-apply layout settings (Position, Scale, Lock)
+    self:UpdateLayout()
+    -- Re-apply visual settings and content (Fonts, Spacing, Mock Data)
+    self:FullUpdate()
 end
 
 function AQT:OnEnable()
     self:CreateUI()
-    -- Registrar opciones DESPUÉS de crear la UI y cargar DB
     if self.SetupOptions then self:SetupOptions() end
-    
     self:RegisterEvents()
+    self:InitializeBlizzardHider()
+    self:UpdateBlizzardTrackerVisibility()
     self:FullUpdate()
 end
 
@@ -208,42 +230,275 @@ function AQT:FullUpdate()
     local db = self.db.profile
     local ASSETS = ns.ASSETS
     
-    -- Sync Settings
-    ASSETS.fontHeaderSize = db.fontHeaderSize
-    ASSETS.fontTextSize = db.fontTextSize
-    ASSETS.lineSpacing = db.lineSpacing
+    -- Sync Global Settings to ASSETS (Fallback)
     ASSETS.spacing = db.sectionSpacing
+    -- Note: We no longer sync generic font sizes here because modules use specific styles now.
+    -- But we keep them in ASSETS for safety or non-granular parts.
+    ASSETS.padding = 10
 
-    if not InCombatLockdown() then
-        for _, itm in ipairs(self.itemButtons) do itm:Hide() end
+    -- 1. Hide all elements
+    for _, l in ipairs(self.lines) do l:Hide() end
+    for _, b in ipairs(self.bars) do b:Hide() end
+    if self.itemButtons and not InCombatLockdown() then
+        for _, btn in ipairs(self.itemButtons) do btn:Hide() end
     end
-    
-    local y, lIdx, bIdx = -ASSETS.padding, 1, 1
-    
-    -- Render Modules
-    if self.RenderScenario then y, lIdx, bIdx = self:RenderScenario(y, lIdx, bIdx) end
-    if self.RenderWidgets then y, lIdx, bIdx = self:RenderWidgets(y, lIdx, bIdx) end
+
+    local y = -ASSETS.padding
+    local lIdx = 1
+    local bIdx = 1
     local itemIdx = 1
-    if self.RenderQuests then y, lIdx, bIdx, itemIdx = self:RenderQuests(y, lIdx, bIdx, itemIdx) end
-    if self.RenderAchievements then y, lIdx = self:RenderAchievements(y, lIdx) end
     
-    -- Hide Unused
-    for i = lIdx, #self.lines do if self.lines[i] then self.lines[i]:Hide() end end
-    for i = bIdx, #self.bars do if self.bars[i] then self.bars[i]:Hide() end end
+    -- Styles for this update
+    local styles = db.styles
+
+    if db.testMode then
+        y, lIdx, bIdx = self:RenderMock(y, lIdx, bIdx)
+    else
+        -- 1. Scenarios
+        if self.RenderScenario then
+            y, lIdx, bIdx = self:RenderScenario(y, lIdx, bIdx, styles.scenarios)
+        end
+
+        -- 2. Widgets (Timer/Durability) - Uses Scenarios style or Quests style? Let's use Scenarios.
+        if self.RenderWidgets then 
+            y, lIdx, bIdx = self:RenderWidgets(y, lIdx, bIdx, styles.scenarios) 
+        end
+
+        -- 3. Quests
+        if self.RenderQuests then
+            y, lIdx, bIdx, itemIdx = self:RenderQuests(y, lIdx, bIdx, itemIdx, styles.quests)
+        end
+        
+        -- 4. World Quests (If separated, otherwise RenderQuests handles it. 
+        -- If you have a separate RenderWorldQuests, pass styles.worldQuests)
+        if self.RenderWorldQuests then
+            y, lIdx, bIdx, itemIdx = self:RenderWorldQuests(y, lIdx, bIdx, itemIdx, styles.worldQuests)
+        end
+        
+        -- 5. Achievements
+        if self.RenderAchievements then
+            y, lIdx = self:RenderAchievements(y, lIdx, styles.achievements)
+        end
+    end
+
+    -- Resize Container
+    local h = math.abs(y) + ASSETS.padding
+    self.Content:SetHeight(h < 50 and 50 or h)
     
-    -- Resize Logic
-    local contentHeight = math.abs(y) + ASSETS.padding
-    local maxWidth = db.width
-    local maxHeight = db.maxHeight
-    
-    self.Content:SetSize(maxWidth, contentHeight)
-    
-    local finalHeight = math.min(contentHeight, maxHeight)
+    local finalHeight = math.min(h, db.maxHeight)
     if finalHeight < 50 then finalHeight = 50 end
-    
-    self.Container:SetSize(maxWidth, finalHeight)
+    self.Container:SetSize(db.width, finalHeight)
     
     if self.ScrollFrame.UpdateScrollChildRect then self.ScrollFrame:UpdateScrollChildRect() end
+end
+
+--------------------------------------------------------------------------------
+-- MOCK RENDER (Test Mode)
+--------------------------------------------------------------------------------
+function AQT:RenderMock(startY, lineIdx, barIdx)
+    local ASSETS = ns.ASSETS
+    local styles = self.db.profile.styles -- Get the new styles
+    local width = self.db.profile.width or 260
+    local font = ASSETS.font
+    local sectSp = self.db.profile.sectionSpacing or 15
+    
+    local yOffset = startY
+
+    -- 1. SCENARIO MOCK (Uses Scenario Style)
+    local s = styles.scenarios
+    local hHead, hText, lineSp = s.headerSize, s.textSize, s.lineSpacing
+
+    -- Header
+    local h = self:GetLine(lineIdx)
+    h:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    h.text:SetFont(font, hHead, "OUTLINE")
+    local c = ASSETS.colors.header or {r=1, g=1, b=1}
+    h.text:SetTextColor(c.r, c.g, c.b)
+    self.SafelySetText(h.text, "Test Dungeon (Mythic)")
+    h:Show()
+    yOffset = yOffset - (hHead + lineSp); lineIdx = lineIdx + 1
+
+    -- Stage
+    local l = self:GetLine(lineIdx)
+    l:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    l.text:SetFont(font, hText, "OUTLINE")
+    l.text:SetTextColor(1, 0.8, 0) -- Gold
+    self.SafelySetText(l.text, "Stage 2: The Test")
+    l:Show()
+    yOffset = yOffset - (hText + lineSp); lineIdx = lineIdx + 1
+
+    -- Boss 1
+    l = self:GetLine(lineIdx)
+    l:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    l.text:SetFont(font, hText, "OUTLINE")
+    l.text:SetTextColor(0, 1, 0) -- Green
+    self.SafelySetText(l.text, "- Boss 1 (Done)")
+    l:Show()
+    yOffset = yOffset - (hText + lineSp); lineIdx = lineIdx + 1
+    
+    yOffset = yOffset - sectSp
+
+    -- 2. WORLD QUEST MOCK (Uses WQ Style)
+    s = styles.worldQuests
+    hHead, hText, lineSp = s.headerSize, s.textSize, s.lineSpacing
+
+    -- Header
+    h = self:GetLine(lineIdx)
+    h:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    h.text:SetFont(font, hHead, "OUTLINE")
+    c = ASSETS.colors.zone or {r=1, g=0.8, b=0}
+    h.text:SetTextColor(c.r, c.g, c.b)
+    self.SafelySetText(h.text, "Azsuna")
+    h:Show()
+    yOffset = yOffset - (hHead + lineSp); lineIdx = lineIdx + 1
+
+    -- Quest
+    l = self:GetLine(lineIdx)
+    l:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    l.text:SetFont(font, hText, "OUTLINE")
+    self.SafelySetText(l.text, "[23h] Test World Quest")
+    l:Show()
+    yOffset = yOffset - (hText + lineSp); lineIdx = lineIdx + 1
+
+    yOffset = yOffset - sectSp
+
+    -- 3. QUEST MOCK (Uses Quest Style)
+    s = styles.quests
+    hHead, hText, lineSp = s.headerSize, s.textSize, s.lineSpacing
+
+    -- Header
+    h = self:GetLine(lineIdx)
+    h:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    h.text:SetFont(font, hHead, "OUTLINE")
+    c = ASSETS.colors.zone or {r=1, g=0.8, b=0}
+    h.text:SetTextColor(c.r, c.g, c.b)
+    self.SafelySetText(h.text, "Elwynn Forest")
+    h:Show()
+    yOffset = yOffset - (hHead + lineSp); lineIdx = lineIdx + 1
+
+    -- Quest 1
+    l = self:GetLine(lineIdx)
+    l:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    l.text:SetFont(font, hText, "OUTLINE")
+    self.SafelySetText(l.text, "Test Quest 1")
+    l:Show()
+    yOffset = yOffset - (hText + lineSp); lineIdx = lineIdx + 1
+
+    -- Objective with Bar
+    l = self:GetLine(lineIdx)
+    l:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    l.text:SetFont(font, hText - 1, "OUTLINE")
+    l.text:SetTextColor(0.8, 0.8, 0.8)
+    self.SafelySetText(l.text, "Items Collected: 3/12")
+    l:Show()
+    yOffset = yOffset - ((hText - 1) + lineSp); lineIdx = lineIdx + 1
+
+    local b = self:GetBar(barIdx)
+    b:SetPoint("TOPRIGHT", self.Content, "TOPRIGHT", -ASSETS.padding, yOffset)
+    b:SetSize(width - 40, s.barHeight)
+    b:SetValue(0.25)
+    b:SetStatusBarColor(0, 0.7, 1)
+    b:Show()
+    yOffset = yOffset - (s.barHeight + lineSp + 2); barIdx = barIdx + 1
+
+    return yOffset, lineIdx, barIdx
+end
+--------------------------------------------------------------------------------
+-- UPDATE LOOP
+--------------------------------------------------------------------------------
+function AQT:FullUpdate()
+    if not self.db then return end
+    local db = self.db.profile
+    local ASSETS = ns.ASSETS
+    
+    -- Sync Global Settings
+    ASSETS.spacing = db.sectionSpacing
+    ASSETS.padding = 10 -- Hardcoded or added to config if you wish
+
+    -- 1. Hide all elements
+    for _, l in ipairs(self.lines) do l:Hide() end
+    for _, b in ipairs(self.bars) do b:Hide() end
+    if self.itemButtons and not InCombatLockdown() then
+        for _, btn in ipairs(self.itemButtons) do btn:Hide() end
+    end
+
+    local y = -ASSETS.padding
+    local lIdx = 1
+    local bIdx = 1
+    local itemIdx = 1
+    
+    -- Get Styles
+    local styles = db.styles
+
+    if db.testMode then
+        y, lIdx, bIdx = self:RenderMock(y, lIdx, bIdx)
+    else
+        -- 1. Scenarios
+        if self.RenderScenario then
+            y, lIdx, bIdx = self:RenderScenario(y, lIdx, bIdx, styles.scenarios)
+        end
+
+        -- 2. Widgets (Timer/Durability)
+        if self.RenderWidgets then 
+            y, lIdx, bIdx = self:RenderWidgets(y, lIdx, bIdx, styles.scenarios) 
+        end
+
+        -- 3. Quests
+        if self.RenderQuests then
+            y, lIdx, bIdx, itemIdx = self:RenderQuests(y, lIdx, bIdx, itemIdx, styles.quests)
+        end
+        
+        -- 4. World Quests
+        if self.RenderWorldQuests then
+            y, lIdx, bIdx, itemIdx = self:RenderWorldQuests(y, lIdx, bIdx, itemIdx, styles.worldQuests)
+        end
+        
+        -- 5. Achievements
+        if self.RenderAchievements then
+            y, lIdx = self:RenderAchievements(y, lIdx, styles.achievements)
+        end
+    end
+
+    -- Resize Container
+    local h = math.abs(y) + ASSETS.padding
+    self.Content:SetHeight(h < 50 and 50 or h)
+    
+    local finalHeight = math.min(h, db.maxHeight)
+    if finalHeight < 50 then finalHeight = 50 end
+    self.Container:SetSize(db.width, finalHeight)
+    
+    if self.ScrollFrame.UpdateScrollChildRect then self.ScrollFrame:UpdateScrollChildRect() end
+end
+
+--------------------------------------------------------------------------------
+-- BLIZZARD TRACKER VISIBILITY
+--------------------------------------------------------------------------------
+function AQT:InitializeBlizzardHider()
+    -- Identify the frame (Retail vs Classic compatibility)
+    if not self.BlizzTracker then
+        self.BlizzTracker = ObjectiveTrackerFrame or WatchFrame or QuestWatchFrame
+    end
+    
+    if self.BlizzTracker and not self.BlizzTracker.isHooked then
+        -- Hook OnShow to enforce hiding if enabled
+        self.BlizzTracker:HookScript("OnShow", function(tracker)
+            if self.db.profile.hideBlizzardTracker then
+                tracker:Hide()
+            end
+        end)
+        self.BlizzTracker.isHooked = true
+    end
+end
+
+function AQT:UpdateBlizzardTrackerVisibility()
+    if not self.BlizzTracker then self:InitializeBlizzardHider() end
+    if not self.BlizzTracker then return end
+    
+    if self.db.profile.hideBlizzardTracker then
+        self.BlizzTracker:Hide()
+    else
+        self.BlizzTracker:Show()
+    end
 end
 
 function AQT:RegisterEvents()

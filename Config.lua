@@ -2,7 +2,7 @@
 -- Project: AscensionQuestTracker
 -- Author: Aka-DoctorCode 
 -- File: Config.lua
--- Version: 05
+-- Version: 06
 -------------------------------------------------------------------------------
 -- Copyright (c) 2025–2026 Aka-DoctorCode. All Rights Reserved.
 --
@@ -225,7 +225,47 @@
 -- end)
 
 local addonName, ns = ...
-local AQT = LibStub("AceAddon-3.0"):GetAddon("AscensionQuestTracker")
+local AQT = ns.AQT
+
+-- Helper to create a style group (Now strictly for Tabs)
+local function CreateStyleGroup(key, name, order, db)
+    return {
+        type = "group",
+        name = name,
+        order = order,
+        args = {
+            header = {
+                type = "header",
+                name = name .. " Settings",
+                order = 0,
+            },
+            headerSize = {
+                type = "range", name = "Header Font Size", min = 10, max = 30, step = 1, order = 1,
+                width = "full",
+                get = function() return db.profile.styles[key].headerSize end,
+                set = function(_, val) db.profile.styles[key].headerSize = val; AQT:FullUpdate() end,
+            },
+            textSize = {
+                type = "range", name = "Text Font Size", min = 8, max = 24, step = 1, order = 2,
+                width = "full",
+                get = function() return db.profile.styles[key].textSize end,
+                set = function(_, val) db.profile.styles[key].textSize = val; AQT:FullUpdate() end,
+            },
+            barHeight = {
+                type = "range", name = "Bar Height", min = 2, max = 20, step = 1, order = 3,
+                width = "full",
+                get = function() return db.profile.styles[key].barHeight end,
+                set = function(_, val) db.profile.styles[key].barHeight = val; AQT:FullUpdate() end,
+            },
+            lineSpacing = {
+                type = "range", name = "Line Spacing", min = 0, max = 20, step = 1, order = 4,
+                width = "full",
+                get = function() return db.profile.styles[key].lineSpacing end,
+                set = function(_, val) db.profile.styles[key].lineSpacing = val; AQT:FullUpdate() end,
+            },
+        }
+    }
+end
 
 -- Options Table Definition
 function AQT:GetOptions()
@@ -233,155 +273,96 @@ function AQT:GetOptions()
         name = "Ascension Quest Tracker",
         handler = AQT,
         type = "group",
+        childGroups = "tab", -- Enables Tabs
         args = {
             general = {
-                type = "group",
-                name = "General Settings",
-                order = 1,
-                inline = true,
+                type = "group", name = "General", order = 1,
                 args = {
-                    hideOnBoss = {
-                        type = "toggle",
-                        name = "Hide on Boss",
-                        desc = "Automatically hide the tracker during boss encounters.",
-                        order = 1,
-                        get = function(info) return self.db.profile.hideOnBoss end,
-                        set = function(info, val) 
-                            self.db.profile.hideOnBoss = val
-                            self:FullUpdate()
+                    header = { type = "header", name = "General Settings", order = 0 },
+                    
+                    -- Toggles
+                    testMode = {
+                        type = "toggle", name = "Test Mode", desc = "Show mock data to configure visuals.", order = 1,
+                        get = function() return self.db.profile.testMode end,
+                        set = function(_, val) self.db.profile.testMode = val; self:FullUpdate() end,
+                    },
+                    hideBlizzard = {
+                        type = "toggle", name = "Hide Blizzard Tracker", desc = "Hides the default quest tracker.", order = 1.1,
+                        get = function() return self.db.profile.hideBlizzardTracker end,
+                        set = function(_, val) 
+                            self.db.profile.hideBlizzardTracker = val
+                            self:UpdateBlizzardTrackerVisibility()
                         end,
                     },
                     locked = {
-                        type = "toggle",
-                        name = "Lock Position",
-                        desc = "Lock the tracker frame to prevent accidental movement.",
-                        order = 2,
-                        get = function(info) return self.db.profile.locked end,
-                        set = function(info, val) 
-                            self.db.profile.locked = val
-                            if AscensionQuestTrackerFrame then
-                                AscensionQuestTrackerFrame:EnableMouse(not val)
-                            end
-                        end,
+                        type = "toggle", name = "Lock Position", order = 1.2,
+                        get = function() return self.db.profile.locked end,
+                        set = function(_, val) self.db.profile.locked = val; if self.Container then self.Container:EnableMouse(not val) end end,
                     },
-                    autoSuperTrack = {
-                        type = "toggle",
-                        name = "Auto Super Track",
-                        desc = "Automatically track the closest quest if nothing is manually tracked.",
-                        order = 3,
-                        get = function(info) return self.db.profile.autoSuperTrack end,
-                        set = function(info, val) self.db.profile.autoSuperTrack = val end,
+                    hideOnBoss = {
+                        type = "toggle", name = "Hide on Boss", desc = "Automatically hide during boss encounters.", order = 1.3,
+                        get = function() return self.db.profile.hideOnBoss end,
+                        set = function(_, val) self.db.profile.hideOnBoss = val; self:FullUpdate() end,
                     },
-                },
-            },
-            appearance = {
-                type = "group",
-                name = "Appearance & Sizing",
-                order = 2,
-                inline = true,
-                args = {
+
+                    -- Sliders
                     scale = {
-                        type = "range",
-                        name = "Scale",
-                        desc = "Adjust the global scale of the tracker.",
-                        min = 0.5, max = 2.0, step = 0.1,
-                        order = 1,
-                        get = function(info) return self.db.profile.scale end,
-                        set = function(info, val) 
-                            self.db.profile.scale = val 
-                            self:UpdateLayout() -- Call update on core
-                        end,
-                    },
-                    maxHeight = {
-                        type = "range",
-                        name = "Max Height",
-                        desc = "Maximum height before scrolling becomes active.",
-                        min = 200, max = 1500, step = 10,
-                        order = 2,
-                        get = function(info) return self.db.profile.maxHeight end,
-                        set = function(info, val) 
-                            self.db.profile.maxHeight = val
-                            self:FullUpdate()
-                        end,
+                        type = "range", name = "Global Scale", min = 0.5, max = 2.0, step = 0.1, order = 2,
+                        width = "full",
+                        get = function() return self.db.profile.scale end,
+                        set = function(_, val) self.db.profile.scale = val; self:UpdateLayout() end,
                     },
                     width = {
-                        type = "range",
-                        name = "Width",
-                        desc = "Width of the tracker frame.",
-                        min = 200, max = 600, step = 10,
-                        order = 3,
-                        get = function(info) return self.db.profile.width end,
-                        set = function(info, val) 
-                            self.db.profile.width = val
-                            self:FullUpdate()
-                        end,
+                        type = "range", name = "Tracker Width", min = 200, max = 600, step = 10, order = 3,
+                        width = "full",
+                        get = function() return self.db.profile.width end,
+                        set = function(_, val) self.db.profile.width = val; self:FullUpdate() end,
                     },
-                },
-            },
-            typography = {
-                type = "group",
-                name = "Typography & Spacing",
-                order = 3,
-                inline = true,
-                args = {
-                    fontHeaderSize = {
-                        type = "range",
-                        name = "Header Font Size",
-                        min = 10, max = 30, step = 1,
-                        order = 1,
-                        get = function(info) return self.db.profile.fontHeaderSize end,
-                        set = function(info, val) 
-                            self.db.profile.fontHeaderSize = val
-                            self:FullUpdate()
-                        end,
-                    },
-                    fontTextSize = {
-                        type = "range",
-                        name = "Text Font Size",
-                        min = 8, max = 24, step = 1,
-                        order = 2,
-                        get = function(info) return self.db.profile.fontTextSize end,
-                        set = function(info, val) 
-                            self.db.profile.fontTextSize = val
-                            self:FullUpdate()
-                        end,
-                    },
-                    lineSpacing = {
-                        type = "range",
-                        name = "Line Spacing",
-                        min = 0, max = 20, step = 1,
-                        order = 3,
-                        get = function(info) return self.db.profile.lineSpacing end,
-                        set = function(info, val) 
-                            self.db.profile.lineSpacing = val
-                            self:FullUpdate()
-                        end,
+                    maxHeight = { -- <--- RE-ADDED THIS SLIDER
+                        type = "range", name = "Max Height", desc = "Maximum height before scrolling becomes active.", 
+                        min = 200, max = 1500, step = 10, order = 4,
+                        width = "full",
+                        get = function() return self.db.profile.maxHeight end,
+                        set = function(_, val) self.db.profile.maxHeight = val; self:FullUpdate() end,
                     },
                     sectionSpacing = {
-                        type = "range",
-                        name = "Section Spacing",
-                        min = 0, max = 50, step = 1,
-                        order = 4,
-                        get = function(info) return self.db.profile.sectionSpacing end,
-                        set = function(info, val) 
-                            self.db.profile.sectionSpacing = val
-                            self:FullUpdate()
-                        end,
+                        type = "range", name = "Module Spacing", min = 0, max = 50, step = 1, order = 5,
+                        width = "full",
+                        get = function() return self.db.profile.sectionSpacing end,
+                        set = function(_, val) self.db.profile.sectionSpacing = val; self:FullUpdate() end,
                     },
-                },
+                }
             },
+            
+            -- Modular Style Tabs
+            scenarios = CreateStyleGroup("scenarios", "Dungeons", 2, self.db),
+            quests = CreateStyleGroup("quests", "Quests", 3, self.db),
+            worldQuests = CreateStyleGroup("worldQuests", "World Quests", 4, self.db),
+            achievements = CreateStyleGroup("achievements", "Achievements", 5, self.db),
+            
+            -- Profiles Tab
+            profiles = LibStub("AceDBOptions-3.0"):GetOptionsTable(self.db),
         },
     }
+    
+    -- Adjust Profiles Tab Order
+    options.args.profiles.order = 100
+    
     return options
 end
 
 function AQT:SetupOptions()
     LibStub("AceConfig-3.0"):RegisterOptionsTable("AscensionQuestTracker", self:GetOptions())
     
+    -- Capture the categoryID
     local optionsFrame, categoryID = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("AscensionQuestTracker", "Ascension Quest Tracker")
     self.optionsFrame = optionsFrame
     
     self:RegisterChatCommand("aqt", function() 
-        Settings.OpenToCategory(categoryID) 
+        if categoryID then
+            Settings.OpenToCategory(categoryID)
+        else
+            Settings.OpenToCategory("Ascension Quest Tracker")
+        end
     end)
 end
